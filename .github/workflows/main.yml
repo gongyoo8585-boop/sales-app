@@ -1,185 +1,33 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<title>매출 관리 앱</title>
+name: Build APK
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+on:
+  push:
+    branches: [ "main" ]
 
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-<style>
-body { font-family: Arial; padding:20px; background:#111; color:#fff;}
-input, select, button { padding:10px; margin:5px; }
-.box { background:#222; padding:15px; margin-top:10px; border-radius:10px;}
-h2 { color:#00ffaa;}
-</style>
-</head>
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
 
-<body>
+    - name: Setup Node
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
 
-<h2>🔥 매출 관리 앱</h2>
+    - name: Install dependencies
+      run: |
+        npm install -g cordova
 
-<div class="box">
-<button onclick="login()">구글 로그인</button>
-<button onclick="logout()">로그아웃</button>
-<p id="user"></p>
-</div>
+    - name: Create App
+      run: |
+        cordova create myApp
+        cd myApp
+        cordova platform add android
 
-<div class="box">
-날짜: <input type="date" id="date"><br>
-
-구분:
-<select id="type">
-  <option value="income">매출</option>
-  <option value="expense">지출</option>
-</select><br>
-
-지출항목:
-<select id="category">
-  <option>월세</option>
-  <option>광고비</option>
-  <option>전기세/가스비/수도</option>
-  <option>통신비</option>
-  <option>비품</option>
-  <option>쿠팡</option>
-  <option>카드결제</option>
-  <option>택시비용</option>
-  <option>유흥비</option>
-  <option>식비</option>
-  <option>생활비</option>
-  <option>적금</option>
-  <option>부모님 생활비</option>
-  <option>아들 생활비</option>
-  <option>보안비(세콤)</option>
-  <option>기타</option>
-</select><br>
-
-금액: <input type="number" id="amount"><br>
-
-<button onclick="save()">저장</button>
-</div>
-
-<div class="box">
-<h3>📊 결과</h3>
-<p id="result"></p>
-</div>
-
-<div class="box">
-<h3>🏆 지출 TOP3</h3>
-<p id="top3"></p>
-</div>
-
-<div class="box">
-<canvas id="chart"></canvas>
-</div>
-
-<script>
-var firebaseConfig = {
-  apiKey: "YOUR_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT.firebaseio.com",
-  projectId: "YOUR_PROJECT"
-};
-
-firebase.initializeApp(firebaseConfig);
-
-const auth = firebase.auth();
-const db = firebase.database();
-
-let data = [];
-let chart = null;
-
-document.getElementById("date").value =
-  new Date().toISOString().slice(0,10);
-
-// 로그인
-function login(){
-  const provider = new firebase.auth.GoogleAuthProvider();
-  auth.signInWithPopup(provider);
-}
-
-// 로그아웃
-function logout(){
-  auth.signOut();
-}
-
-// 로그인 상태
-auth.onAuthStateChanged(user=>{
-  if(user){
-    document.getElementById("user").innerText = user.email;
-    load(user.uid);
-  }
-});
-
-// 데이터 불러오기
-function load(uid){
-  db.ref("users/"+uid).once("value", snap=>{
-    data = snap.val() || [];
-    render();
-  });
-}
-
-// 저장
-function save(){
-  let user = auth.currentUser;
-  if(!user){ alert("로그인 필요"); return; }
-
-  let date = document.getElementById("date").value;
-  let type = document.getElementById("type").value;
-  let amount = Number(document.getElementById("amount").value);
-  let category = document.getElementById("category").value;
-
-  data.push({date,type,amount,category});
-
-  db.ref("users/"+user.uid).set(data);
-
-  render();
-}
-
-// 계산
-function render(){
-  let income=0, expense=0;
-  let map={}, categoryMap={};
-
-  data.forEach(d=>{
-    if(d.type==="income") income+=d.amount;
-    else {
-      expense+=d.amount;
-      categoryMap[d.category]=(categoryMap[d.category]||0)+d.amount;
-    }
-
-    map[d.date]=(map[d.date]||0)+(d.type==="income"?d.amount:-d.amount);
-  });
-
-  document.getElementById("result").innerText =
-    `매출:${income} 지출:${expense} 순이익:${income-expense}`;
-
-  let top = Object.entries(categoryMap)
-    .sort((a,b)=>b[1]-a[1]).slice(0,3);
-
-  document.getElementById("top3").innerText =
-    top.map((t,i)=>`${i+1}위 ${t[0]} ${t[1]}`).join("\n");
-
-  draw(map);
-}
-
-// 그래프
-function draw(map){
-  if(chart) chart.destroy();
-
-  chart = new Chart(document.getElementById("chart"),{
-    type:'line',
-    data:{
-      labels:Object.keys(map),
-      datasets:[{data:Object.values(map)}]
-    }
-  });
-}
-</script>
-
-</body>
-</html>
+    - name: Build APK
+      run: |
+        cd myApp
+        cordova build android
