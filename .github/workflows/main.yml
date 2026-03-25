@@ -26,12 +26,12 @@ jobs:
         cordova create myApp
         cd myApp
         cordova platform add android
-
     - name: Build APK
       run: |
         cd myApp
         cordova build android
-      - name: Upload APK
+
+    - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: app
