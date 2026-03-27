@@ -23,7 +23,7 @@ button { background:#00ff88; font-weight:bold; }
 
 <body>
 
-<h2>🔥 매출 관리 앱</h2>
+<h2>🔥 매출 관리 앱 (완성)</h2>
 
 <div class="box">
 날짜 <input type="date" id="date">
@@ -41,28 +41,14 @@ button { background:#00ff88; font-weight:bold; }
 </div>
 
 <div class="box">
-📊 요약 (선택 월 기준)<br><br>
-👥 고객: <span id="customerCount">0</span><br>
-👨‍💼 직원: <span id="staffCount">0</span>
+📊 요약<br><br>
+👥 고객 건수: <span id="customerCount">0</span><br>
+👨‍💼 직원 건수: <span id="staffCount">0</span><br>
+💰 총 순이익: <span id="profit">0</span>
 </div>
 
 <div class="box">
-📊 월별 고객 증가
-<canvas id="customerChart"></canvas>
-</div>
-
-<div class="box">
-📊 직원 vs 고객
-<canvas id="compareChart"></canvas>
-</div>
-
-<div class="box">
-📈 순이익 그래프
-<canvas id="profitChart"></canvas>
-</div>
-
-<div class="box">
-📊 직원별 지출 그래프
+📊 직원별 성과 (건수 + 수익)
 <canvas id="staffChart"></canvas>
 </div>
 
@@ -87,13 +73,15 @@ button { background:#00ff88; font-weight:bold; }
 
 let data = JSON.parse(localStorage.getItem("data")) || [];
 
+const COMMISSION = 30000; // 🔥 1건당 수익
+
 function save(){
   let item = {
-    date: date.value,
-    type: type.value,
-    title: title.value,
-    staff: staff.value,
-    amount: Number(amount.value)||0
+    date: document.getElementById("date").value,
+    type: document.getElementById("type").value,
+    title: document.getElementById("title").value,
+    staff: document.getElementById("staff").value || "미입력",
+    amount: Number(document.getElementById("amount").value)||0
   };
 
   if(!item.date || !item.title || item.amount==0){
@@ -104,6 +92,11 @@ function save(){
   data.push(item);
   localStorage.setItem("data", JSON.stringify(data));
   update();
+
+  // 입력 초기화
+  document.getElementById("title").value="";
+  document.getElementById("staff").value="";
+  document.getElementById("amount").value="";
 }
 
 function resetData(){
@@ -120,38 +113,32 @@ function showDetail(dateStr){
   data.forEach(d=>{
     if(d.date===dateStr){
       total+=d.amount;
-      html+=`<div>${d.type} | ${d.title} | ${d.amount}</div>`;
+      html+=`<div>${d.type} | ${d.title} | ${d.staff} | ${d.amount}</div>`;
     }
   });
 
   html+=`<hr>총합: ${total}`;
-  detail.innerHTML=html;
+  document.getElementById("detail").innerHTML=html;
 }
 
 function update(){
 
-  let month = monthPicker.value || new Date().toISOString().slice(0,7);
-  monthPicker.value = month;
+  let monthInput = document.getElementById("monthPicker");
+  let month = monthInput.value || new Date().toISOString().slice(0,7);
+  monthInput.value = month;
 
   let customerCount=0;
   let staffCount=0;
   let dateSum={};
 
-  let monthCustomer={}, monthStaff={}, monthIncome={}, monthExpense={};
-  let staffExpense={};
+  let staffCountMap={};
+  let income=0;
+  let expense=0;
 
   data.forEach(d=>{
 
-    let m = d.date.slice(0,7);
-
-    if(!monthCustomer[m]) monthCustomer[m]=0;
-    if(!monthStaff[m]) monthStaff[m]=0;
-    if(!monthIncome[m]) monthIncome[m]=0;
-    if(!monthExpense[m]) monthExpense[m]=0;
-
     if(d.type==="매출"){
-      monthCustomer[m]++;
-      monthIncome[m]+=d.amount;
+      income+=d.amount;
 
       if(d.date.startsWith(month)){
         customerCount++;
@@ -159,69 +146,40 @@ function update(){
       }
 
     }else{
-      monthStaff[m]++;
-      monthExpense[m]+=d.amount;
-
-      if(d.staff){
-        if(!staffExpense[d.staff]) staffExpense[d.staff]=0;
-        staffExpense[d.staff]+=d.amount;
-      }
+      expense+=d.amount;
 
       if(d.date.startsWith(month)){
         staffCount++;
       }
+
+      // 직원 건수
+      if(!staffCountMap[d.staff]) staffCountMap[d.staff]=0;
+      staffCountMap[d.staff]++;
     }
 
   });
 
-  customerCountEl.innerText=customerCount;
-  staffCountEl.innerText=staffCount;
+  // 순이익 계산
+  let profit = income - expense;
 
-  let labels = Object.keys(monthCustomer).sort();
+  document.getElementById("customerCount").innerText = customerCount;
+  document.getElementById("staffCount").innerText = staffCount;
+  document.getElementById("profit").innerText = profit.toLocaleString();
 
-  // 고객 그래프
+  // 직원 그래프 (건수 + 수익)
+  let names = Object.keys(staffCountMap);
+  let counts = names.map(n=>staffCountMap[n]);
+  let earnings = counts.map(c=>c * COMMISSION);
+
   if(window.c1) c1.destroy();
-  c1 = new Chart(customerChart,{
-    type:'line',
-    data:{labels:labels, datasets:[{label:"고객", data:labels.map(m=>monthCustomer[m])}]}
-  });
-
-  // 비교 그래프
-  if(window.c2) c2.destroy();
-  c2 = new Chart(compareChart,{
+  c1 = new Chart(staffChart,{
     type:'bar',
     data:{
-      labels:labels,
+      labels:names,
       datasets:[
-        {label:"고객", data:labels.map(m=>monthCustomer[m])},
-        {label:"직원", data:labels.map(m=>monthStaff[m])}
+        {label:"건수", data:counts},
+        {label:"수익", data:earnings}
       ]
-    }
-  });
-
-  // 순이익 그래프
-  if(window.c3) c3.destroy();
-  c3 = new Chart(profitChart,{
-    type:'line',
-    data:{
-      labels:labels,
-      datasets:[{
-        label:"순이익",
-        data:labels.map(m=>monthIncome[m]-monthExpense[m])
-      }]
-    }
-  });
-
-  // 직원 그래프
-  let staffNames = Object.keys(staffExpense);
-  let staffValues = staffNames.map(s=>staffExpense[s]);
-
-  if(window.c4) c4.destroy();
-  c4 = new Chart(staffChart,{
-    type:'bar',
-    data:{
-      labels:staffNames,
-      datasets:[{label:"지출", data:staffValues}]
     }
   });
 
@@ -241,14 +199,14 @@ function update(){
     let amount = dateSum[full]||0;
 
     let cls="low";
-    if(amount>200000) cls="high";
-    else if(amount>100000) cls="medium";
+    if(amount > 500000) cls="high";
+    else if(amount > 200000) cls="medium";
 
     cal+=`<div class="day ${cls}" onclick="showDetail('${full}')">
     ${d}<br>${amount||""}</div>`;
   }
 
-  calendar.innerHTML=cal;
+  document.getElementById("calendar").innerHTML=cal;
 }
 
 update();
