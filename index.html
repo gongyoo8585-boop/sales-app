@@ -2,102 +2,253 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>매출 관리 앱</title>
+<title>매출 관리 앱 (최종 완성)</title>
+
 <style>
 body { background:#111; color:#fff; font-family:sans-serif; padding:20px;}
-h1 { color:#00ff88;}
 .box { background:#222; padding:15px; margin:10px 0; border-radius:10px;}
-input, select { width:100%; padding:10px; margin:5px 0;}
-button { padding:10px; background:#00ff88; border:none; font-weight:bold;}
+input, select, button {
+  width:100%; padding:10px; margin:5px 0;
+  border:none; border-radius:5px;
+}
+button { background:#00ff88; font-weight:bold; }
+.calendar { display:grid; grid-template-columns: repeat(7,1fr); gap:5px;}
+.day { padding:10px; text-align:center; border-radius:5px; cursor:pointer;}
+.high { background:#00aa55;}
+.medium { background:#ffaa00;}
+.low { background:#333;}
+.empty { background:#111;}
 </style>
 </head>
 
 <body>
 
-<h1>🔥 매출 관리 앱</h1>
+<h2>🔥 매출 관리 앱</h2>
 
 <div class="box">
 날짜 <input type="date" id="date">
-구분 
+구분
 <select id="type">
 <option value="매출">매출</option>
 <option value="지출">지출</option>
 </select>
-
-항목
-<select id="category">
-<option>월세</option>
-<option>광고비</option>
-<option>전기세</option>
-<option>가스비</option>
-<option>식비</option>
-<option>기타</option>
-<option>수입</option>
-</select>
-
+제목 <input id="title">
+직원 <input id="staff">
 금액 <input type="number" id="amount">
 
 <button onclick="save()">저장</button>
+<button onclick="resetData()" style="background:red;">전체삭제</button>
 </div>
 
 <div class="box">
-<h3>📊 결과</h3>
-총 매출: <span id="income">0</span><br>
-총 지출: <span id="expense">0</span><br>
-순이익: <span id="profit">0</span>
+📊 요약 (선택 월 기준)<br><br>
+👥 고객: <span id="customerCount">0</span><br>
+👨‍💼 직원: <span id="staffCount">0</span>
 </div>
 
 <div class="box">
-<h3>🏆 지출 TOP3</h3>
-<div id="top3"></div>
+📊 월별 고객 증가
+<canvas id="customerChart"></canvas>
 </div>
+
+<div class="box">
+📊 직원 vs 고객
+<canvas id="compareChart"></canvas>
+</div>
+
+<div class="box">
+📈 순이익 그래프
+<canvas id="profitChart"></canvas>
+</div>
+
+<div class="box">
+📊 직원별 지출 그래프
+<canvas id="staffChart"></canvas>
+</div>
+
+<div class="box">
+📅 월 선택
+<input type="month" id="monthPicker" onchange="update()">
+</div>
+
+<div class="box">
+📅 달력
+<div id="calendar" class="calendar"></div>
+</div>
+
+<div class="box">
+📌 날짜 상세
+<div id="detail"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
 
 let data = JSON.parse(localStorage.getItem("data")) || [];
 
 function save(){
-    let item = {
-        date: document.getElementById("date").value,
-        type: document.getElementById("type").value,
-        category: document.getElementById("category").value,
-        amount: Number(document.getElementById("amount").value)
-    };
+  let item = {
+    date: date.value,
+    type: type.value,
+    title: title.value,
+    staff: staff.value,
+    amount: Number(amount.value)||0
+  };
 
-    data.push(item);
-    localStorage.setItem("data", JSON.stringify(data));
+  if(!item.date || !item.title || item.amount==0){
+    alert("입력하세요");
+    return;
+  }
 
-    alert("저장 완료");
+  data.push(item);
+  localStorage.setItem("data", JSON.stringify(data));
+  update();
+}
+
+function resetData(){
+  if(confirm("삭제?")){
+    data=[];
+    localStorage.removeItem("data");
     update();
+  }
+}
+
+function showDetail(dateStr){
+  let html="", total=0;
+
+  data.forEach(d=>{
+    if(d.date===dateStr){
+      total+=d.amount;
+      html+=`<div>${d.type} | ${d.title} | ${d.amount}</div>`;
+    }
+  });
+
+  html+=`<hr>총합: ${total}`;
+  detail.innerHTML=html;
 }
 
 function update(){
-    let income = 0;
-    let expense = 0;
-    let categorySum = {};
 
-    data.forEach(d=>{
-        if(d.type=="매출") income += d.amount;
-        else {
-            expense += d.amount;
-            categorySum[d.category] = (categorySum[d.category]||0) + d.amount;
-        }
-    });
+  let month = monthPicker.value || new Date().toISOString().slice(0,7);
+  monthPicker.value = month;
 
-    document.getElementById("income").innerText = income;
-    document.getElementById("expense").innerText = expense;
-    document.getElementById("profit").innerText = income - expense;
+  let customerCount=0;
+  let staffCount=0;
+  let dateSum={};
 
-    let sorted = Object.entries(categorySum)
-        .sort((a,b)=>b[1]-a[1])
-        .slice(0,3);
+  let monthCustomer={}, monthStaff={}, monthIncome={}, monthExpense={};
+  let staffExpense={};
 
-    let html = "";
-    sorted.forEach(s=>{
-        html += s[0] + " : " + s[1] + "<br>";
-    });
+  data.forEach(d=>{
 
-    document.getElementById("top3").innerHTML = html;
+    let m = d.date.slice(0,7);
+
+    if(!monthCustomer[m]) monthCustomer[m]=0;
+    if(!monthStaff[m]) monthStaff[m]=0;
+    if(!monthIncome[m]) monthIncome[m]=0;
+    if(!monthExpense[m]) monthExpense[m]=0;
+
+    if(d.type==="매출"){
+      monthCustomer[m]++;
+      monthIncome[m]+=d.amount;
+
+      if(d.date.startsWith(month)){
+        customerCount++;
+        dateSum[d.date]=(dateSum[d.date]||0)+d.amount;
+      }
+
+    }else{
+      monthStaff[m]++;
+      monthExpense[m]+=d.amount;
+
+      if(d.staff){
+        if(!staffExpense[d.staff]) staffExpense[d.staff]=0;
+        staffExpense[d.staff]+=d.amount;
+      }
+
+      if(d.date.startsWith(month)){
+        staffCount++;
+      }
+    }
+
+  });
+
+  customerCountEl.innerText=customerCount;
+  staffCountEl.innerText=staffCount;
+
+  let labels = Object.keys(monthCustomer).sort();
+
+  // 고객 그래프
+  if(window.c1) c1.destroy();
+  c1 = new Chart(customerChart,{
+    type:'line',
+    data:{labels:labels, datasets:[{label:"고객", data:labels.map(m=>monthCustomer[m])}]}
+  });
+
+  // 비교 그래프
+  if(window.c2) c2.destroy();
+  c2 = new Chart(compareChart,{
+    type:'bar',
+    data:{
+      labels:labels,
+      datasets:[
+        {label:"고객", data:labels.map(m=>monthCustomer[m])},
+        {label:"직원", data:labels.map(m=>monthStaff[m])}
+      ]
+    }
+  });
+
+  // 순이익 그래프
+  if(window.c3) c3.destroy();
+  c3 = new Chart(profitChart,{
+    type:'line',
+    data:{
+      labels:labels,
+      datasets:[{
+        label:"순이익",
+        data:labels.map(m=>monthIncome[m]-monthExpense[m])
+      }]
+    }
+  });
+
+  // 직원 그래프
+  let staffNames = Object.keys(staffExpense);
+  let staffValues = staffNames.map(s=>staffExpense[s]);
+
+  if(window.c4) c4.destroy();
+  c4 = new Chart(staffChart,{
+    type:'bar',
+    data:{
+      labels:staffNames,
+      datasets:[{label:"지출", data:staffValues}]
+    }
+  });
+
+  // 달력
+  let year = +month.split("-")[0];
+  let m2 = +month.split("-")[1]-1;
+
+  let firstDay = new Date(year,m2,1).getDay();
+  let lastDate = new Date(year,m2+1,0).getDate();
+
+  let cal="";
+
+  for(let i=0;i<firstDay;i++) cal+=`<div class="day empty"></div>`;
+
+  for(let d=1; d<=lastDate; d++){
+    let full = month+"-"+String(d).padStart(2,"0");
+    let amount = dateSum[full]||0;
+
+    let cls="low";
+    if(amount>200000) cls="high";
+    else if(amount>100000) cls="medium";
+
+    cal+=`<div class="day ${cls}" onclick="showDetail('${full}')">
+    ${d}<br>${amount||""}</div>`;
+  }
+
+  calendar.innerHTML=cal;
 }
 
 update();
